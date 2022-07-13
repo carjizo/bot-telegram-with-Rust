@@ -1,4 +1,5 @@
 use dotenv::dotenv;
+use firebase_rs::*;
 use frankenstein::api_params::SendPhotoParams;
 use frankenstein::api_params::SendVideoParams;
 use frankenstein::AsyncTelegramApi;
@@ -8,12 +9,14 @@ use frankenstein::SendMessageParams;
 use frankenstein::{AsyncApi, UpdateContent};
 use std::env;
 
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct User {
+    name: String,
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-
-    // let id: String = env::var("CHAT_ID").expect("CHAT_ID not set");
-    // let chat_id: i64 = id.parse().unwrap();
 
     let token: String = env::var("TELEGRAM_BOT_TOKEN").expect("TELEGRAM_BOT_TOKEN not set");
     let api: AsyncApi = AsyncApi::new(&token);
@@ -30,7 +33,7 @@ async fn main() {
                 for update in response.result {
                     if let UpdateContent::Message(message) = update.content {
                         if let Some(text) = message.text.clone() {
-                            if text == "Hola" {
+                            if text == "temperatura" {
                                 let api_clone = api.clone();
 
                                 tokio::spawn(async move {
@@ -98,13 +101,29 @@ async fn main() {
 }
 
 async fn process_message(message: Message, api: AsyncApi) {
-    let send_message_params = SendMessageParams::builder()
-        .chat_id(message.chat.id)
-        .text("hello")
-        .reply_to_message_id(message.message_id)
-        .build();
+    let url_api = env::var("ULR_FIREBASE").expect("ULR_FIREBASE not set");
+    let firebase = Firebase::new(&url_api).unwrap().at("users");
+    let users = firebase.get_as_string().await;
+    for usuario in users {
+        let respuesta: String = usuario.data;
+        let send_message_params = SendMessageParams::builder()
+            .chat_id(message.chat.id)
+            .text(respuesta)
+            .reply_to_message_id(message.message_id)
+            .build();
 
-    if let Err(err) = api.send_message(&send_message_params).await {
-        println!("Failed to send message: {:?}", err);
+        if let Err(err) = api.send_message(&send_message_params).await {
+            println!("Failed to send message: {:?}", err);
+        }
     }
+
+    // let send_message_params = SendMessageParams::builder()
+    //     .chat_id(message.chat.id)
+    //     .text(&respuesta)
+    //     .reply_to_message_id(message.message_id)
+    //     .build();
+
+    // if let Err(err) = api.send_message(&send_message_params).await {
+    //     println!("Failed to send message: {:?}", err);
+    // }
 }
