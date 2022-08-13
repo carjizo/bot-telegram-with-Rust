@@ -14,6 +14,60 @@ struct User {
     name: String,
 }
 
+async fn process_message_photo(api: AsyncApi) {
+    let id: String = env::var("CHAT_ID").expect("CHAT_ID not set");
+    let chat_id: i64 = id.parse().unwrap();
+    let file = std::path::PathBuf::from("./photo.jpg");
+    let params = SendPhotoParams::builder()
+        .chat_id(chat_id)
+        .photo(file)
+        .build();
+    match api.send_photo(&params).await {
+        Ok(response) => {
+            println!("Photo was uploaded {:?}", response);
+        }
+        Err(error) => {
+            eprintln!("Failed to upload photo: {:?}", error);
+        }
+    }
+}
+
+async fn process_message_video(api: AsyncApi) {
+    let id: String = env::var("CHAT_ID").expect("CHAT_ID not set");
+    let chat_id: i64 = id.parse().unwrap();
+    let file = std::path::PathBuf::from("./video.mp4");
+    let params = SendVideoParams::builder()
+        .chat_id(chat_id)
+        .video(file)
+        .build();
+    match api.send_video(&params).await {
+        Ok(response) => {
+            println!("Photo was uploaded {:?}", response);
+        }
+        Err(error) => {
+            eprintln!("Failed to upload photo: {:?}", error);
+        }
+    }
+}
+
+async fn process_message_for_firebase(message: Message, api: AsyncApi) {
+    let url_api = env::var("ULR_FIREBASE").expect("ULR_FIREBASE not set");
+    let firebase = Firebase::new(&url_api).unwrap().at("users");
+    let users = firebase.get_as_string().await;
+    for usuario in users {
+        let respuesta: String = usuario.data;
+        let send_message_params = SendMessageParams::builder()
+            .chat_id(message.chat.id)
+            .text(respuesta)
+            .reply_to_message_id(message.message_id)
+            .build();
+
+        if let Err(err) = api.send_message(&send_message_params).await {
+            println!("Failed to send message: {:?}", err);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     dotenv().ok();
@@ -33,11 +87,10 @@ async fn main() {
                 for update in response.result {
                     if let UpdateContent::Message(message) = update.content {
                         if let Some(text) = message.text.clone() {
+                            let api_clone = api.clone();
                             if text == "temperatura" {
-                                let api_clone = api.clone();
-
                                 tokio::spawn(async move {
-                                    process_message(message, api_clone).await;
+                                    process_message_for_firebase(message, api_clone).await;
                                 });
 
                                 update_params = update_params_builder
@@ -45,45 +98,17 @@ async fn main() {
                                     .offset(update.update_id + 1)
                                     .build();
                             } else if text == "foto" {
-                                let api_clone = api.clone();
-                                let id: String = env::var("CHAT_ID").expect("CHAT_ID not set");
-                                let chat_id: i64 = id.parse().unwrap();
-                                let file = std::path::PathBuf::from("./photo.jpg");
-                                let params = SendPhotoParams::builder()
-                                    .chat_id(chat_id)
-                                    .photo(file)
-                                    .build();
-                                match api.send_photo(&params).await {
-                                    Ok(response) => {
-                                        println!("Photo was uploaded {:?}", response);
-                                    }
-                                    Err(error) => {
-                                        eprintln!("Failed to upload photo: {:?}", error);
-                                    }
-                                }
-
+                                tokio::spawn(async move {
+                                    process_message_photo(api_clone).await;
+                                });
                                 update_params = update_params_builder
                                     .clone()
                                     .offset(update.update_id + 1)
                                     .build();
                             } else if text == "video" {
-                                let api_clone = api.clone();
-                                let id: String = env::var("CHAT_ID").expect("CHAT_ID not set");
-                                let chat_id: i64 = id.parse().unwrap();
-                                let file = std::path::PathBuf::from("./video.mp4");
-                                let params = SendVideoParams::builder()
-                                    .chat_id(chat_id)
-                                    .video(file)
-                                    .build();
-                                match api.send_video(&params).await {
-                                    Ok(response) => {
-                                        println!("Photo was uploaded {:?}", response);
-                                    }
-                                    Err(error) => {
-                                        eprintln!("Failed to upload photo: {:?}", error);
-                                    }
-                                }
-
+                                tokio::spawn(async move {
+                                    process_message_photo(api_clone).await;
+                                });
                                 update_params = update_params_builder
                                     .clone()
                                     .offset(update.update_id + 1)
@@ -98,32 +123,4 @@ async fn main() {
             }
         }
     }
-}
-
-async fn process_message(message: Message, api: AsyncApi) {
-    let url_api = env::var("ULR_FIREBASE").expect("ULR_FIREBASE not set");
-    let firebase = Firebase::new(&url_api).unwrap().at("users");
-    let users = firebase.get_as_string().await;
-    for usuario in users {
-        let respuesta: String = usuario.data;
-        let send_message_params = SendMessageParams::builder()
-            .chat_id(message.chat.id)
-            .text(respuesta)
-            .reply_to_message_id(message.message_id)
-            .build();
-
-        if let Err(err) = api.send_message(&send_message_params).await {
-            println!("Failed to send message: {:?}", err);
-        }
-    }
-
-    // let send_message_params = SendMessageParams::builder()
-    //     .chat_id(message.chat.id)
-    //     .text(&respuesta)
-    //     .reply_to_message_id(message.message_id)
-    //     .build();
-
-    // if let Err(err) = api.send_message(&send_message_params).await {
-    //     println!("Failed to send message: {:?}", err);
-    // }
 }
